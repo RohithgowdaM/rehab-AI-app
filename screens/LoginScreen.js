@@ -7,10 +7,29 @@ export default function LoginScreen({ navigation }) {
   const [password, setPassword] = useState('');
 
   const handleLogin = async () => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) Alert.alert('Login error', error.message);
-    else navigation.replace('Dashboard');
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      Alert.alert('Login Failed', error.message);
+    } else {
+      // Check if user profile exists
+      const { data: profileData, error: profileError } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('id', data.user.id)
+        .single();
+
+      if (profileData) {
+        navigation.replace('Dashboard');
+      } else {
+        navigation.replace('UserInfo');
+      }
+    }
   };
+
 
   const handleSignup = async () => {
     const { error } = await supabase.auth.signUp({ email, password });

@@ -1,24 +1,48 @@
 import React, { useState } from 'react';
 import { View, TextInput, Button, Text, Alert, StyleSheet } from 'react-native';
+import { useRoute } from '@react-navigation/native';
 import { supabase } from '../utils/supabase';
 
 export default function PainLogScreen({ navigation }) {
+  const route = useRoute();
+  const { injuryId } = route.params;
+
   const [painLevel, setPainLevel] = useState('');
   const [description, setDescription] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async () => {
+    if (!painLevel || !description.trim()) {
+      return Alert.alert('Missing Fields', 'Please enter both pain level and a short description.');
+    }
+
+    const parsedLevel = parseInt(painLevel);
+    if (isNaN(parsedLevel) || parsedLevel < 1 || parsedLevel > 10) {
+      return Alert.alert('Invalid Pain Level', 'Please enter a number between 1 and 10.');
+    }
+
+    setSubmitting(true);
     const user = (await supabase.auth.getUser()).data.user;
-    if (!user) return Alert.alert('Not logged in');
+    if (!user) {
+      Alert.alert('Error', 'You are not logged in.');
+      setSubmitting(false);
+      return;
+    }
 
     const { error } = await supabase.from('pain_logs').insert({
       user_id: user.id,
-      pain_level: parseInt(painLevel),
-      description,
+      injury_id: injuryId,
+      pain_level: parsedLevel,
+      description: description.trim(),
     });
 
-    if (error) Alert.alert('Error', error.message);
-    else {
+    setSubmitting(false);
+    if (error) {
+      Alert.alert('Submission Failed', error.message);
+    } else {
       Alert.alert('Success', 'Pain entry saved.');
+      setPainLevel('');
+      setDescription('');
       navigation.goBack();
     }
   };
@@ -44,7 +68,7 @@ export default function PainLogScreen({ navigation }) {
         style={[styles.input, { height: 100, textAlignVertical: 'top' }]}
       />
       <View style={styles.button}>
-        <Button title="Submit Entry" onPress={handleSubmit} />
+        <Button title={submitting ? 'Submitting...' : 'Submit Entry'} onPress={handleSubmit} disabled={submitting} />
       </View>
     </View>
   );
