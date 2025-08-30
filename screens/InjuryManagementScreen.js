@@ -1,4 +1,4 @@
-import React, { useEffect, useState,useLayoutEffect } from 'react';
+import React, { useEffect, useState, useLayoutEffect } from 'react';
 import {
     View,
     Text,
@@ -8,7 +8,8 @@ import {
     Alert,
     StyleSheet,
     Modal,
-    Platform
+    Platform,
+    ActivityIndicator,
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -26,6 +27,7 @@ const predefinedInjuryTypes = [
 
 export default function InjuryManagementScreen() {
     const [injuries, setInjuries] = useState([]);
+    const [loading, setLoading] = useState(true); // ✅ loading state
     const [modalVisible, setModalVisible] = useState(false);
     const [newType, setNewType] = useState(predefinedInjuryTypes[0]);
     const [newDate, setNewDate] = useState(new Date());
@@ -52,9 +54,11 @@ export default function InjuryManagementScreen() {
     }, [navigation]);
 
     const fetchInjuries = async () => {
+        setLoading(true); // start spinner
         const { data: { user }, error: userError } = await supabase.auth.getUser();
         if (userError || !user) {
             Alert.alert('Auth Error', 'User not authenticated.');
+            setLoading(false);
             return;
         }
 
@@ -69,6 +73,7 @@ export default function InjuryManagementScreen() {
         } else {
             setInjuries(data);
         }
+        setLoading(false); // stop spinner
     };
 
     const handleSetActive = async (injuryId) => {
@@ -124,13 +129,17 @@ export default function InjuryManagementScreen() {
     const renderInjuryItem = ({ item }) => (
         <View style={styles.injuryBox}>
             <Text style={styles.injuryText}>Type: {item.injury_type}</Text>
-            <Text style={styles.injuryText}>Start: {new Date(item.start_date).toDateString()}</Text>
+            <Text style={styles.injuryText}>
+                Start: {new Date(item.start_date).toDateString()}
+            </Text>
             {item.is_active ? (
                 <TouchableOpacity
                     style={styles.activeBadgeContainer}
                     onPress={() => navigation.navigate('Dashboard', { injuryId: item.id })}
                 >
-                    <Text style={[styles.activeBadgeText, { color: 'green' }]}>Active - Click here to view injury Dashboard</Text>
+                    <Text style={[styles.activeBadgeText, { color: 'green' }]}>
+                        Active - Click here to view injury Dashboard
+                    </Text>
                 </TouchableOpacity>
             ) : (
                 <View style={styles.buttonRow}>
@@ -143,25 +152,34 @@ export default function InjuryManagementScreen() {
 
     return (
         <View style={styles.container}>
-            <Text style={styles.title}>Active Injuries</Text>
-            <FlatList
-                data={injuries.filter((i) => i.is_active)}
-                renderItem={renderInjuryItem}
-                keyExtractor={(item) => item.id}
-                ListEmptyComponent={<Text style={styles.empty}>No active injuries</Text>}
-            />
+            {loading ? (
+                <View style={styles.loader}>
+                    <ActivityIndicator size="large" color="#2196f3" />
+                    <Text>Loading injuries...</Text>
+                </View>
+            ) : (
+                <>
+                    <Text style={styles.title}>Active Injuries</Text>
+                    <FlatList
+                        data={injuries.filter((i) => i.is_active)}
+                        renderItem={renderInjuryItem}
+                        keyExtractor={(item) => item.id}
+                        ListEmptyComponent={<Text style={styles.empty}>No active injuries</Text>}
+                    />
 
-            <Text style={styles.title}>Healed Injuries</Text>
-            <FlatList
-                data={injuries.filter((i) => !i.is_active)}
-                renderItem={renderInjuryItem}
-                keyExtractor={(item) => item.id}
-                ListEmptyComponent={<Text style={styles.empty}>No healed injuries</Text>}
-            />
+                    <Text style={styles.title}>Healed Injuries</Text>
+                    <FlatList
+                        data={injuries.filter((i) => !i.is_active)}
+                        renderItem={renderInjuryItem}
+                        keyExtractor={(item) => item.id}
+                        ListEmptyComponent={<Text style={styles.empty}>No healed injuries</Text>}
+                    />
 
-            <TouchableOpacity style={styles.addButton} onPress={() => setModalVisible(true)}>
-                <Text style={styles.addButtonText}>➕ Add New Injury</Text>
-            </TouchableOpacity>
+                    <TouchableOpacity style={styles.addButton} onPress={() => setModalVisible(true)}>
+                        <Text style={styles.addButtonText}>➕ Add New Injury</Text>
+                    </TouchableOpacity>
+                </>
+            )}
 
             {/* Modal for adding new injury */}
             <Modal visible={modalVisible} transparent animationType="slide">
@@ -173,7 +191,8 @@ export default function InjuryManagementScreen() {
                         <View style={styles.pickerContainer}>
                             <Picker
                                 selectedValue={newType}
-                                onValueChange={(itemValue) => setNewType(itemValue)}>
+                                onValueChange={(itemValue) => setNewType(itemValue)}
+                            >
                                 {predefinedInjuryTypes.map((type) => (
                                     <Picker.Item key={type} label={type} value={type} />
                                 ))}
@@ -183,13 +202,18 @@ export default function InjuryManagementScreen() {
                         <Text style={styles.modalLabel}>Start Date:</Text>
                         <TouchableOpacity
                             style={styles.dateButton}
-                            onPress={() => setDatePickerOpen(true)}>
+                            onPress={() => setDatePickerOpen(true)}
+                        >
                             <Text style={styles.dateText}>{newDate.toDateString()}</Text>
                         </TouchableOpacity>
 
                         <View style={styles.modalButtons}>
                             <Button title="Add Injury" onPress={addNewInjury} />
-                            <Button title="Cancel" color="#999" onPress={() => setModalVisible(false)} />
+                            <Button
+                                title="Cancel"
+                                color="#999"
+                                onPress={() => setModalVisible(false)}
+                            />
                         </View>
                     </View>
                 </View>
@@ -215,6 +239,7 @@ export default function InjuryManagementScreen() {
 
 const styles = StyleSheet.create({
     container: { flex: 1, padding: 20, backgroundColor: '#fff' },
+    loader: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     title: { fontSize: 18, fontWeight: 'bold', marginTop: 20 },
     injuryBox: {
         padding: 15,
@@ -223,14 +248,15 @@ const styles = StyleSheet.create({
         borderRadius: 10,
     },
     injuryText: { fontSize: 16 },
-    activeBadge: {
+    activeBadgeContainer: {
         marginTop: 10,
         padding: 6,
-        backgroundColor: '#4caf50',
-        color: '#fff',
-        textAlign: 'center',
+        backgroundColor: '#e6ffe6',
         borderRadius: 5,
+    },
+    activeBadgeText: {
         fontWeight: 'bold',
+        textAlign: 'center',
     },
     buttonRow: {
         flexDirection: 'row',

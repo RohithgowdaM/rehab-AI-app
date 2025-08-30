@@ -1,95 +1,105 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, Alert } from 'react-native';
+import React, { useEffect, useRef, useState } from "react";
+import { View, Text, StyleSheet, ActivityIndicator, Dimensions } from "react-native";
+import { Camera } from "expo-camera";
+import * as tf from "@tensorflow/tfjs";
+import "@tensorflow/tfjs-react-native";
+import * as posedetection from "@tensorflow-models/pose-detection";
 
 export default function PoseScreen() {
-  const handleStartEvaluation = () => {
-    Alert.alert("Coming Soon", "Real-time pose tracking will be available in the next phase!");
+  const [hasPermission, setHasPermission] = useState(null);
+  const [isTfReady, setIsTfReady] = useState(false);
+  const [pose, setPose] = useState(null);
+  const cameraRef = useRef(null);
+  const detectorRef = useRef(null);
+
+  useEffect(() => {
+    // Load camera + TensorFlow + model
+    (async () => {
+      const { status } = await Camera.requestCameraPermissionsAsync();
+      setHasPermission(status === "granted");
+
+      await tf.ready(); // TensorFlow.js ready
+      setIsTfReady(true);
+
+      detectorRef.current = await posedetection.createDetector(
+        posedetection.SupportedModels.MoveNet,
+        { modelType: "SinglePose.Lightning" }
+      );
+    })();
+  }, []);
+
+  const handleCameraStream = async (images) => {
+    if (!detectorRef.current) return;
+    const nextImageTensor = images.next().value;
+    if (!nextImageTensor) return;
+
+    try {
+      const poses = await detectorRef.current.estimatePoses(nextImageTensor);
+      if (poses.length > 0) {
+        setPose(poses[0]); // Store first detected pose
+      }
+    } catch (err) {
+      console.log("Pose detection error:", err);
+    }
   };
+
+  if (hasPermission === null) {
+    return <View><Text>Requesting camera permission...</Text></View>;
+  }
+  if (hasPermission === false) {
+    return <View><Text>No access to camera</Text></View>;
+  }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>📷 Posture Evaluation</Text>
-      <Text style={styles.subtitle}>Analyze your movements using pose estimation</Text>
-
-      <View style={styles.previewBox}>
-        <Image
-          source={require('../assets/mock_pose.png')} // Placeholder image
-          style={styles.image}
-          resizeMode="cover"
-        />
-        <Text style={styles.overlay}>📍 Keypoints Overlay (Mock)</Text>
-      </View>
-
-      <TouchableOpacity style={styles.button} onPress={handleStartEvaluation}>
-        <Text style={styles.buttonText}>Start Evaluation</Text>
-      </TouchableOpacity>
-
-      <Text style={styles.note}>
-        We’ll enable real-time pose tracking using MediaPipe in the next update.
-      </Text>
+      {isTfReady ? (
+        <>
+          <Camera
+            ref={cameraRef}
+            style={styles.camera}
+            type={Camera.Constants.Type.front}
+            onReady={() => console.log("Camera Ready")}
+          />
+          <View style={styles.overlay}>
+            {pose ? (
+              <Text style={styles.poseText}>
+                Detected keypoints: {pose.keypoints.length}
+              </Text>
+            ) : (
+              <Text style={styles.poseText}>No pose detected yet...</Text>
+            )}
+          </View>
+        </>
+      ) : (
+        <ActivityIndicator size="large" color="#00ff00" />
+      )}
     </View>
   );
 }
 
+const { width, height } = Dimensions.get("window");
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
-    backgroundColor: '#fff',
-    alignItems: 'center',
+    backgroundColor: "#000",
   },
-  title: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    marginBottom: 6,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  previewBox: {
-    width: '100%',
-    height: 300,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 24,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  image: {
-    width: '100%',
-    height: '100%',
+  camera: {
+    width: width,
+    height: height,
   },
   overlay: {
-    position: 'absolute',
-    bottom: 8,
-    backgroundColor: '#000000aa',
-    color: 'white',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-    fontSize: 14,
+    position: "absolute",
+    bottom: 50,
+    left: 0,
+    right: 0,
+    alignItems: "center",
   },
-  button: {
-    backgroundColor: '#007bff',
-    paddingVertical: 12,
-    paddingHorizontal: 28,
-    borderRadius: 12,
-    marginBottom: 16,
-    elevation: 2,
-  },
-  buttonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  note: {
-    fontSize: 14,
-    color: '#888',
-    textAlign: 'center',
+  poseText: {
+    color: "#fff",
+    fontSize: 18,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    padding: 8,
+    borderRadius: 10,
   },
 });
