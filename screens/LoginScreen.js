@@ -1,20 +1,21 @@
 import React, { useState } from 'react';
 import { View, TextInput, Button, Text, Alert, StyleSheet } from 'react-native';
 import { supabase } from '../utils/supabase';
+import { useNavigation } from '@react-navigation/native';
 
-export default function LoginScreen({ navigation }) {
+export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const navigation = useNavigation();
 
   const handleLogin = async () => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
-    if (error) {
-      Alert.alert('Login Failed', error.message);
-    } else {
+      if (error || !data?.user) {
+        return Alert.alert('Login Failed', error?.message || 'Unknown error');
+      }
+
       // Check if user profile exists
       const { data: profileData, error: profileError } = await supabase
         .from('user_profiles')
@@ -22,19 +23,33 @@ export default function LoginScreen({ navigation }) {
         .eq('id', data.user.id)
         .single();
 
+      if (profileError) {
+        console.error('Profile query failed:', profileError);
+      }
+
       if (profileData) {
         navigation.replace('Dashboard');
       } else {
         navigation.replace('UserInfo');
       }
+    } catch (err) {
+      console.error('Login exception:', err);
+      Alert.alert('Login Error', 'Something went wrong. Try again.');
     }
   };
 
-
   const handleSignup = async () => {
-    const { error } = await supabase.auth.signUp({ email, password });
-    if (error) Alert.alert('Signup error', error.message);
-    else Alert.alert('Success', 'Check your email to confirm signup.');
+    try {
+      const { error } = await supabase.auth.signUp({ email, password });
+      if (error) return Alert.alert('Signup error', error.message);
+
+      Alert.alert('Success', 'Check your email to confirm signup.', [
+        { text: 'OK', onPress: () => navigation.replace('Login') },
+      ]);
+    } catch (err) {
+      console.error('Signup exception:', err);
+      Alert.alert('Signup Error', 'Something went wrong. Try again.');
+    }
   };
 
   return (

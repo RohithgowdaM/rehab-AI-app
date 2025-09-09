@@ -1,105 +1,143 @@
-import React, { useEffect, useRef, useState } from "react";
-import { View, Text, StyleSheet, ActivityIndicator, Dimensions } from "react-native";
-import { Camera } from "expo-camera";
-import * as tf from "@tensorflow/tfjs";
-import "@tensorflow/tfjs-react-native";
-import * as posedetection from "@tensorflow-models/pose-detection";
+import React, { useEffect, useState } from 'react';
+import {
+    View,
+    Text,
+    StyleSheet,
+    FlatList,
+    TouchableOpacity,
+    Button,
+    Alert,
+    ActivityIndicator,
+} from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
+import { supabase } from '../utils/supabase';
+import { useRoute } from '@react-navigation/native';
 
 export default function PoseScreen() {
-  const [hasPermission, setHasPermission] = useState(null);
-  const [isTfReady, setIsTfReady] = useState(false);
-  const [pose, setPose] = useState(null);
-  const cameraRef = useRef(null);
-  const detectorRef = useRef(null);
+    const route = useRoute();
+    const { injuryTypeId, injuryTypeName } = route.params; // passed from InjuryManagementScreen
+    const [exercises, setExercises] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [uploading, setUploading] = useState(false);
 
-  useEffect(() => {
-    // Load camera + TensorFlow + model
-    (async () => {
-      const { status } = await Camera.requestCameraPermissionsAsync();
-      setHasPermission(status === "granted");
+    useEffect(() => {
+        fetchExercises();
+    }, []);
 
-      await tf.ready(); // TensorFlow.js ready
-      setIsTfReady(true);
+    const fetchExercises = async () => {
+        setLoading(true);
+        const { data, error } = await supabase
+            .from('exercises_table')
+            .select('*')
+            .eq('injury_type_id', injuryTypeId);
 
-      detectorRef.current = await posedetection.createDetector(
-        posedetection.SupportedModels.MoveNet,
-        { modelType: "SinglePose.Lightning" }
-      );
-    })();
-  }, []);
+        if (error) {
+            Alert.alert('Error', 'Failed to fetch exercises: ' + error.message);
+        } else {
+            setExercises(data);
+        }
+        setLoading(false);
+    };
 
-  const handleCameraStream = async (images) => {
-    if (!detectorRef.current) return;
-    const nextImageTensor = images.next().value;
-    if (!nextImageTensor) return;
+    const uploadVideo = async (exerciseId) => {
+        try {
+            const result = await DocumentPicker.getDocumentAsync({
+                type: 'video/*',
+            });
 
-    try {
-      const poses = await detectorRef.current.estimatePoses(nextImageTensor);
-      if (poses.length > 0) {
-        setPose(poses[0]); // Store first detected pose
-      }
-    } catch (err) {
-      console.log("Pose detection error:", err);
-    }
-  };
+            if (result.type === 'success') {
+                setUploading(true);
+                const fileUri = result.uri;
+                const fileName = `${exerciseId}_${Date.now()}.mp4`;
 
-  if (hasPermission === null) {
-    return <View><Text>Requesting camera permission...</Text></View>;
-  }
-  if (hasPermission === false) {
-    return <View><Text>No access to camera</Text></View>;
-  }
+                const response = await fetch(fileUri);
+                const fileBlob = await response.blob();
 
-  return (
-    <View style={styles.container}>
-      {isTfReady ? (
-        <>
-          <Camera
-            ref={cameraRef}
-            style={styles.camera}
-            type={Camera.Constants.Type.front}
-            onReady={() => console.log("Camera Ready")}
-          />
-          <View style={styles.overlay}>
-            {pose ? (
-              <Text style={styles.poseText}>
-                Detected keypoints: {pose.keypoints.length}
-              </Text>
-            ) : (
-              <Text style={styles.poseText}>No pose detected yet...</Text>
+                const { data, error } = await supabase.storage
+                    .from('pose-videos')
+                    .upload(fileName, fileBlob, { upsert: true });
+
+                if (error) {
+                    Alert.alert('Upload Failed', error.message);
+                } else {
+                    Alert.alert('Success', 'Video uploaded successfully!');
+                }
+                setUploading(false);
+            }
+        } catch (err) {
+            setUploading(false);
+            Alert.alert('Error', 'Something went wrong: ' + err.message);
+        }
+    };
+
+    const renderExerciseItem = ({ item }) => (
+        <View style={styles.exerciseBox}>
+            <Text style={styles.exerciseName}>{item.name}</Text>
+            {item.description && <Text style={styles.exerciseDesc}>{item.description}</Text>}
+            {item.demo_video_url && (
+                <Text style={styles.demoText}>Demo: {item.demo_video_url}</Text>
             )}
-          </View>
-        </>
-      ) : (
-        <ActivityIndicator size="large" color="#00ff00" />
-      )}
-    </View>
-  );
+            <TouchableOpacity
+                style={styles.uploadButton}
+                onPress={() => uploadVideo(item.id)}
+            >
+                <Text style={styles.uploadButtonText}>Upload Video</Text>
+            </TouchableOpacity>
+        </View>
+    );
+
+    return (
+        <View style={styles.container}>
+            <Text style={styles.title}>Exercises for {injuryTypeName}</Text>
+            {loading ? (
+                <ActivityIndicator size="large" color="#2196f3" style={{ marginTop: 20 }} />
+            ) : (
+                <FlatList
+                    data={exercises}
+                    keyExtractor={(item) => item.id.toString()}
+                    renderItem={renderExerciseItem}
+                    contentContainerStyle={{ paddingBottom: 20 }}
+                />
+            )}
+
+            {uploading && (
+                <View style={styles.uploadingOverlay}>
+                    <ActivityIndicator size="large" color="white" />
+                    <Text style={{ color: 'white', marginTop: 10 }}>Uploading...</Text>
+                </View>
+            )}
+        </View>
+    );
 }
 
-const { width, height } = Dimensions.get("window");
-
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#000",
-  },
-  camera: {
-    width: width,
-    height: height,
-  },
-  overlay: {
-    position: "absolute",
-    bottom: 50,
-    left: 0,
-    right: 0,
-    alignItems: "center",
-  },
-  poseText: {
-    color: "#fff",
-    fontSize: 18,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    padding: 8,
-    borderRadius: 10,
-  },
+    container: { flex: 1, padding: 20, backgroundColor: '#fff' },
+    title: { fontSize: 20, fontWeight: 'bold', marginBottom: 20 },
+    exerciseBox: {
+        padding: 15,
+        marginBottom: 15,
+        backgroundColor: '#f5f5f5',
+        borderRadius: 10,
+    },
+    exerciseName: { fontSize: 16, fontWeight: 'bold' },
+    exerciseDesc: { fontSize: 14, marginTop: 5, color: '#555' },
+    demoText: { fontSize: 12, marginTop: 5, color: '#888' },
+    uploadButton: {
+        marginTop: 10,
+        backgroundColor: '#2196f3',
+        paddingVertical: 8,
+        borderRadius: 8,
+        alignItems: 'center',
+    },
+    uploadButtonText: { color: '#fff', fontWeight: '600' },
+    uploadingOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
 });
