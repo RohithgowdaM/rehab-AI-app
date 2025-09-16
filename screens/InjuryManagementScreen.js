@@ -24,6 +24,7 @@ export default function InjuryManagementScreen() {
   const [newType, setNewType] = useState(null);
   const [newDate, setNewDate] = useState(new Date());
   const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [user, setUser] = useState(null);
 
   const navigation = useNavigation();
 
@@ -43,9 +44,19 @@ export default function InjuryManagementScreen() {
   }, [navigation]);
 
   useEffect(() => {
+    fetchCurrentUser()
     fetchInjuryTypes();
     fetchInjuries();
   }, []);
+
+  const fetchCurrentUser = async () => {
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (error || !user) {
+      Alert.alert('Auth Error', 'User not authenticated.');
+      navigation.replace('Login');
+    }
+    setUser(user);
+  };
 
   // Fetch injury types
   const fetchInjuryTypes = async () => {
@@ -82,6 +93,7 @@ export default function InjuryManagementScreen() {
     else setInjuries(data);
 
     setLoading(false);
+    console.log(data)
   };
 
   // Set active injury
@@ -132,7 +144,7 @@ export default function InjuryManagementScreen() {
       {item.is_active ? (
         <TouchableOpacity
           style={styles.activeBadgeContainer}
-          onPress={() => navigation.navigate('Dashboard', { injuryId: item.id })}
+          onPress={() => navigation.navigate('Dashboard', { injuryId: item.id, userId: user.id })}
         >
           <Text style={[styles.activeBadgeText, { color: 'green' }]}>
             Active - Click here to view injury Dashboard

@@ -4,6 +4,7 @@ import { supabase } from '../utils/supabase';
 
 export default function Dashboard({ route, navigation }) {
   const injuryId = route?.params?.injuryId;
+  const userId = route?.params?.userId;
   const [injury, setInjury] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -63,6 +64,8 @@ export default function Dashboard({ route, navigation }) {
     navigation.navigate('Pose', {
       injuryTypeId: injury.injury_types_table?.id,
       injuryTypeName: injury.injury_types_table?.name || 'Exercise',
+      injuryId: injury.id,
+      userId: userId,
     });
   };
 
