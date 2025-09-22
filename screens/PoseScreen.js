@@ -13,7 +13,7 @@ import { supabase } from '../utils/supabase';
 import { useRoute } from '@react-navigation/native';
 import { Picker } from '@react-native-picker/picker';
 
-const API_BASE = "https://97426570cde7.ngrok-free.app"; // Python FastAPI server
+const API_BASE = "https://76d8a357eeab.ngrok-free.app"; // Python FastAPI server
 
 export default function PoseScreen() {
     const route = useRoute();
@@ -30,6 +30,10 @@ export default function PoseScreen() {
     useEffect(() => {
         fetchExercises();
         fetchVideosForInjury();
+        const interval = setInterval(() => {
+            fetchVideosForInjury();
+        }, 20000);
+        return () => clearInterval(interval);
     }, []);
 
     // Fetch exercises
@@ -121,13 +125,14 @@ export default function PoseScreen() {
     const triggerVideoProcessing = async (video) => {
         setProcessingMessage(`Processing video: ${video.id}`);
 
+        const formData = new FormData();
+        formData.append("user_id", userId);
+        formData.append("injury_id", injuryId);
+        formData.append("exercise_type", video.exercise_id);
+
         await fetch(`${API_BASE}/process_video/${video.id}`, {
             method: 'POST',
-            body: new URLSearchParams({
-                user_id: userId,
-                injury_id: injuryId,
-                exercise_type: video.exercise_id,
-            }),
+            body: formData,
         });
 
         pollVideoStatus(video.id);
@@ -136,7 +141,11 @@ export default function PoseScreen() {
     // Poll video status
     const pollVideoStatus = (videoId) => {
         const interval = setInterval(async () => {
-            const res = await fetch(`${API_BASE}/video_status/${videoId}`);
+            const res = await fetch(`${API_BASE}/video_status/${videoId}`, {
+                headers: {
+                    'ngrok-skip-browser-warning': 'true'
+                }
+            });
             const data = await res.json();
 
             setVideoList(prev =>
